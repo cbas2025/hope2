@@ -1,0 +1,82 @@
+import requests
+import openai
+from supabase import create_client
+
+# Supabase credentials
+SUPABASE_URL = "YOUR_SUPABASE_URL"
+SUPABASE_KEY = "YOUR_SUPABASE_API_KEY"
+
+# Google API key and Places API setup
+GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"
+LOCATION = "29.7604,-95.3698"  # Coordinates for Houston
+RADIUS = 5000  # 5km radius
+KEYWORD = "AT&T Fiber Internet"
+
+# OpenAI API key
+OPENAI_API_KEY = "YOUR_OPENAI_API_KEY"
+
+# Initialize Supabase client
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Function to fetch leads from Google Places API
+def fetch_places_data(api_key, location, radius, keyword):
+    url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={keyword}&location={location}&radius={radius}&key={api_key}"
+    
+    response = requests.get(url)
+    results = response.json().get('results', [])
+    
+    leads = []
+    
+    for result in results:
+        business_info = {
+            'name': result.get('name'),
+            'address': result.get('formatted_address'),
+            'place_id': result.get('place_id')
+        }
+        leads.append(business_info)
+    
+    return leads
+
+# Function to process lead info with OpenAI API
+def process_lead_with_openai(lead_info):
+    openai.api_key = OPENAI_API_KEY
+    
+    prompt = f"Enhance this business lead information: {lead_info}"
+
+    response = openai.Completion.create(
+        model="gpt-4",
+        prompt=prompt,
+        max_tokens=150
+    )
+    
+    return response.choices[0].text.strip()
+
+# Function to save leads to Supabase
+def save_lead_to_supabase(lead_info):
+    data = {
+        "name": lead_info.get("name"),
+        "address": lead_info.get("address"),
+        "place_id": lead_info.get("place_id"),
+    }
+    
+    response = supabase.table("leads").insert(data).execute()
+    return response
+
+# Main function to generate and save leads
+def generate_and_save_leads():
+    # Step 1: Fetch leads from Google Places API
+    leads = fetch_places_data(GOOGLE_API_KEY, LOCATION, RADIUS, KEYWORD)
+    
+    # Step 2: Process each lead using OpenAI
+    for lead in leads:
+        lead['enhanced_info'] = process_lead_with_openai(lead)
+    
+    # Step 3: Save each lead to Supabase
+    for lead in leads:
+        save_lead_to_supabase(lead)
+    
+    print("Leads generated and saved successfully")
+
+# Run the lead generation process
+if __name__ == "__main__":
+    generate_and_save_leads()
